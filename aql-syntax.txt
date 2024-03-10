@@ -1,0 +1,556 @@
+
+FOR u IN users
+  FILTER u.type == "newbie" && u.active == true
+  RETURN u.name
+
+FOR f IN `filter`
+  RETURN f["sort"]
+
+FOR u IN users
+  FOR f IN friends
+    FILTER u.active == true && f.active == true && u.id == f.userId
+    RETURN u.name
+
+LET users = []
+FOR u IN users // iterates over the "users" variable, not the "users" collection
+  RETURN u
+
+// access last array element
+u.friends[-1]
+
+// access second to last array element
+u.friends[-2]
+
+// computed attribute names must be enclosed in square brackets
+{ [ CONCAT("test/", "bar") ] : "someValue" }
+
+//Bind parameter
+FILTER u.name == @name
+FOR doc IN @@collection
+
+/*
+comparisons by type
+null  <  bool  <  number  <  string  <  array (or list)  <  object (or document)
+*/
+
+
+//use the HAS() function to distinguish between an explicit null value and the implicit null value
+FOR u IN users
+  FILTER u.name == null AND HAS(u, "name")
+  RETURN u
+
+//Sub query
+FOR p IN persons
+  LET recommendations = ( // subquery start
+    FOR r IN recommendations
+      FILTER p.id == r.personId
+      SORT p.rank DESC
+      LIMIT 10
+      RETURN r
+  ) // subquery end
+  RETURN { person : p, recommendations : recommendations }
+
+
+  FOR p IN persons
+  COLLECT city = p.city INTO g
+  RETURN {
+    city : city,
+    numPersons : LENGTH(g),
+    maxRating: MAX( // subquery start
+      FOR r IN g
+      RETURN r.p.rating
+    ) // subquery end
+  }
+
+ //To avoid a nested data structure such as [[1]], FIRST() can be used for example:
+ RETURN FIRST( RETURN 1 )
+
+// [1,2,3]
+FOR elem IN (RETURN 1..3) // [1,2,3]
+    RETURN elem
+
+
+RETURN RAND() > 0.5 ? (RETURN 1) : 0
+
+//the subquery is executed under all circumstances
+LET maybe = DOCUMENT("coll/does_not_exist")
+LET dependent = maybe ? (
+  FOR attr IN ATTRIBUTES(maybe)
+    RETURN attr
+) : null
+RETURN dependent
+
+/*
+IN	test if a value is contained in an array
+NOT IN	test if a value is not contained in an array
+LIKE	tests if a string value matches a pattern
+NOT LIKE	tests if a string value does not match a pattern
+=~	tests if a string value matches a regular expression
+!~	tests if a string value does not match a regular expression
+
+
+"foo"  LIKE  "f%"          // true
+ "foo"  NOT LIKE  "f%"      // false
+ "foo"  =~  "^f[o].$"       // true
+ "foo"  !~  "[a-z]+bar$"    // true
+
+ [ 1, 2, 3 ]  ALL IN  [ 2, 3, 4 ]  // false
+[ 1, 2, 3 ]  ALL IN  [ 1, 2, 3 ]  // true
+[ 1, 2, 3 ]  NONE IN  [ 3 ]       // false
+[ 1, 2, 3 ]  NONE IN  [ 23, 42 ]  // true
+[ 1, 2, 3 ]  ANY IN  [ 4, 5, 6 ]  // false
+[ 1, 2, 3 ]  ANY IN  [ 1, 42 ]    // true
+[ 1, 2, 3 ]  ANY ==  2            // true
+[ 1, 2, 3 ]  ANY ==  4            // false
+[ 1, 2, 3 ]  ANY >  0             // true
+[ 1, 2, 3 ]  ANY <=  1            // true
+[ 1, 2, 3 ]  NONE <  99           // false
+[ 1, 2, 3 ]  NONE >  10           // true
+[ 1, 2, 3 ]  ALL >  2             // false
+[ 1, 2, 3 ]  ALL >  0             // true
+[ 1, 2, 3 ]  ALL >=  3            // false
+["foo", "bar"]  ALL !=  "moo"     // true
+
+ TO_NUMBER() function
+
+*/
+
+//Ternary shortcut
+//In the following example, the expression evaluates to u.value if u.value is truthy. Otherwise, a fixed string is given back:
+u.value ? : 'value is null, 0 or not present'
+
+
+//Range operator [ 2010, 2011, 2012, 2013 ]
+2010..2013
+
+/*
+[*] for expanding array variables
+[**], [***] etc. for flattening arrays
+[* ...], [** ...] etc. for filtering, limiting, and projecting arrays using inline expressions
+[? ...] for nested search, known as the question mark operator
+*/
+
+/*
+"friends": [
+      { "name": "sergei", "age": 27 },
+      { "name": "tiffany", "age": 25 }
+    ]
+ */
+ //FOR f IN friends RETURN f.name
+friends[*].name //[ "sergei", "tiffany" ]
+
+/*
+How many levels are collapsed is determined by the amount of asterisk characters used.
+[**] collapses one level of nesting - just like FLATTEN(array) or FLATTEN(array, 1) would do
+-, [***] collapses two levels - the equivalent to FLATTEN(array, 2) - and so on.
+*/
+RETURN (
+  FOR u IN users RETURN u.friends[*].name
+)[**]
+
+
+ //inline FILTER
+//anyArray[* FILTER conditions LIMIT skip,limit RETURN projection]
+LET arr = [ [ 1, 2 ], 3, [ 4, 5 ], 6 ]
+RETURN arr[** FILTER CURRENT % 2 == 0] // [ [ 2, 4, 6 ] ]
+
+
+FOR u IN users
+    RETURN {
+        name: u.name,
+        friends: u.friends[* FILTER CONTAINS(CURRENT.name, "a") AND CURRENT.age > 40
+            LIMIT 2
+            RETURN CONCAT(CURRENT.name, " is ", CURRENT.age)
+        ]
+    }
+
+FOR u IN users
+  RETURN { name: u.name, friends: u.friends[* FILTER CURRENT.age > u.age].name }
+
+//Inline limit
+//returns one friend each:
+FOR u IN users
+  RETURN { name: u.name, friends: u.friends[* LIMIT 1].name }
+
+//skips the first friend and returns two friends at most per user
+FOR u IN users
+  RETURN { name: u.name, friends: u.friends[* LIMIT 1,2].name }
+
+//Inline projection
+FOR u IN users
+  RETURN u.friends[* RETURN CONCAT(CURRENT.name, " is a friend of ", u.name)] //[["tina is a friend of john"]]
+
+//--
+
+/*
+Question mark operator:
+use the [? ... ] operator on arrays to check whether the elements fulfill certain criteria, and you can specify how often they should be satisfied.
+The operator is similar to an inline filter but with an additional length check and it evaluates to true or false.
+*/
+LET arr = [ 1, 2, 3, 4 ]
+RETURN arr[? 2 FILTER CURRENT % 2 == 0] // true
+/*
+The number 2 after the ? is the quantifier. It is optional and defaults to ANY. The following quantifiers are supported:
+Integer numbers for exact quantities (e.g. 2)
+Number ranges for a quantity between the two values (e.g. 2..3)
+NONE (equivalent to 0)
+ANY
+ALL
+AT LEAST
+*/
+
+//--
+
+RETURN DOCUMENT("users/phil")
+
+INSERT {
+  _key: "GilbertoGil",
+  firstName: "Gilberto",
+  name: "Gil",
+  city: "Fortalezza"
+} INTO users
+
+UPDATE "PhilCarpenter" WITH {
+  status: "active",
+  location: "Beijing"
+} IN users
+
+//The REPLACE operation is an alternative to the UPDATE operation that lets you replace all attributes of a document (except for attributes that cannot be changed, like _key):
+REPLACE {
+  _key: "NatachaDeclerck",
+  firstName: "Natacha",
+  name: "Leclerc",
+  status: "active",
+  level: "premium"
+} IN users
+
+REMOVE "GilbertoGil" IN users
+
+// update where..
+FOR u IN users
+  FILTER u.active == true
+  UPDATE u WITH {
+    lastLogin: DATE_NOW(),
+    numberOfLogins: u.numberOfLogins + 1 //only works if there is already a numberOfLogins attribute present in the document.
+    //numberOfLogins: HAS(u, "numberOfLogins") ? u.numberOfLogins + 1 : 1
+  } IN users
+
+//To make the query succeed regardless of the errors, use the ignoreErrors query option:
+FOR u IN users
+  REPLACE u IN backup OPTIONS { ignoreErrors: true }
+
+
+FOR u IN wallet
+  FILTER u._key == '1'
+  UPDATE u WITH {
+    balance: u.balance + 2
+  } IN wallet
+
+LET w = DOCUMENT('wallet/1')
+UPDATE w WITH {
+    balance: 100
+} IN wallet
+
+
+
+
+UPDATE { _key: "my_key", name: "Jon" } IN users
+
+LET key = PARSE_IDENTIFIER("users/john").key
+UPDATE key WITH { ... } IN users
+
+FOR i IN 1..1000
+  UPDATE CONCAT("test", i)
+  WITH { foobar: true } IN users
+  OPTIONS { ignoreErrors: true }
+
+OR u IN users
+  UPDATE u WITH { foobar: true, notNeeded: null } IN users
+  OPTIONS { keepNull: false }
+
+FOR u IN users
+  UPDATE u WITH {
+    name: { first: "foo", middle: "b.", last: "baz" }
+  } IN users
+  OPTIONS { mergeObjects: false }
+
+FOR i IN 1..1000
+  UPDATE { _key: CONCAT("test", i), _rev: "1287623" }
+  WITH { foobar: true } IN users
+  OPTIONS { ignoreRevs: false }
+
+LET doc = FIRST(FOR u IN users FILTER u._key == "john" RETURN u)
+UPDATE doc WITH {
+  fullName: CONCAT(doc.firstName, " ", doc.lastName)
+} IN users
+
+//------------
+//Altering substructures
+FOR doc IN [
+  {
+    "topLevelAttribute": "a",
+    "subList": [
+      {
+        "attributeToAlter": "value to change",
+        "filterByMe": true
+      },
+      {
+        "attributeToAlter": "another value to change",
+        "filterByMe": true
+      },
+      {
+        "attributeToAlter": "keep this value",
+        "filterByMe": false
+      }
+    ]
+  },
+  {
+    "topLevelAttribute": "b",
+    "subList": [
+      {
+        "attributeToAlter": "keep this value",
+        "filterByMe": false
+      }
+    ]
+  }
+] INSERT doc INTO complexCollection
+
+FOR doc in complexCollection
+  LET alteredList = (
+    FOR element IN doc.subList
+       RETURN element.filterByMe
+              ? MERGE(element, { attributeToAlter: "new value" })
+              : element
+  )
+  UPDATE doc WITH { subList: alteredList } IN complexCollection
+  RETURN NEW
+
+FOR doc in complexCollection
+  LET alteredList = doc.subList[*
+    RETURN CURRENT.filterByMe
+    ? MERGE(CURRENT, { attributeToAlter: "new value" })
+    : CURRENT
+  ]
+  FILTER HASH(doc.subList) != HASH(alteredList)
+  UPDATE doc WITH { subList: alteredList } IN complexCollection
+  RETURN NEW
+
+//-----------------
+
+// OLD and NEW
+
+FOR i IN 1..100
+  INSERT { value: i } IN test
+  RETURN NEW
+FOR u IN users
+  FILTER u.status == "deleted"
+  REMOVE u IN users
+  RETURN OLD
+FOR u IN users
+  FILTER u.status == "not active"
+  UPDATE u WITH { status: "inactive" } IN users
+  RETURN NEW
+
+
+ //----
+WITH users, managers
+FOR v, e, p IN 1..2 OUTBOUND 'users/1' usersHaveManagers
+  RETURN { v, e, p }
+
+
+//grouping
+
+FOR u IN users
+  COLLECT city = u.city INTO groups
+  RETURN {
+    "city" : city,
+    "usersInCity" : groups
+  }
+
+FOR u IN users
+  COLLECT country = u.country, city = u.city INTO groups
+  RETURN {
+    "country" : country,
+    "city" : city,
+    "usersInCity" : groups
+  }
+
+FOR u IN users
+  COLLECT country = u.country, city = u.city INTO groups = u.name
+  RETURN {
+    "country" : country,
+    "city" : city,
+    "userNames" : groups
+  }
+
+FOR u IN users
+  COLLECT country = u.country, city = u.city INTO groups = {
+    "name" : u.name,
+    "isActive" : u.status == "active"
+  }
+  RETURN {
+    "country" : country,
+    "city" : city,
+    "usersInCity" : groups
+  }
+
+FOR u IN users
+  LET name = u.name
+  LET someCalculation = u.value1 + u.value2
+  COLLECT city = u.city INTO groups KEEP name
+  RETURN {
+    "city" : city,
+    "userNames" : groups[*].name
+  }
+
+FOR u IN users
+  COLLECT age = u.age WITH COUNT INTO length
+  RETURN {
+    "age" : age,
+    "count" : length
+  }
+
+  FOR u IN users
+  COLLECT ageGroup = FLOOR(u.age / 5) * 5
+  AGGREGATE minAge = MIN(u.age), maxAge = MAX(u.age)
+  RETURN {
+    ageGroup,
+    minAge,
+    maxAge
+  }
+
+
+//WINDOW { preceding: numPrecedingRows, following: numFollowingRows } AGGREGATE variableName = aggregateExpression
+//WINDOW rangeValue WITH { preceding: offsetPreceding, following: offsetFollowing } AGGREGATE variableName = aggregateExpression
+
+FOR t IN observations
+  SORT t.time
+  WINDOW { preceding: 1, following: 1 }
+  AGGREGATE rollingAverage = AVG(t.val), rollingSum = SUM(t.val)
+  WINDOW { preceding: "unbounded", following: 0}
+  AGGREGATE cumulativeSum = SUM(t.val)
+  RETURN {
+    time: t.time,
+    subject: t.subject,
+    val: t.val,
+    rollingAverage, // average of the window's values
+    rollingSum,     // sum of the window's values
+    cumulativeSum   // running total
+  }
+
+FOR t IN observations
+  COLLECT subject = t.subject INTO group = t
+  LET subquery = (FOR t2 IN group
+    SORT t2.time
+    WINDOW { preceding: 1, following: 1 }
+    AGGREGATE rollingAverage = AVG(t2.val), rollingSum = SUM(t2.val)
+    WINDOW { preceding: "unbounded", following: 0 }
+    AGGREGATE cumulativeSum = SUM(t2.val)
+    RETURN {
+      time: t2.time,
+      subject: t2.subject,
+      val: t2.val,
+      rollingAverage,
+      rollingSum,
+      cumulativeSum
+    }
+
+FOR t IN observations
+  WINDOW t.val WITH { preceding: 10, following: 5 }
+  AGGREGATE rollingAverage = AVG(t.val), rollingSum = SUM(t.val)
+  RETURN {
+    time: t.time,
+    subject: t.subject,
+    val: t.val,
+    rollingAverage,
+    rollingSum
+  }
+
+FOR t IN observations
+  WINDOW DATE_TIMESTAMP(t.time) WITH { preceding: "PT30M" }
+  AGGREGATE rollingAverage = AVG(t.val), rollingSum = SUM(t.val)
+  RETURN {
+    time: t.time,
+    subject: t.subject,
+    val: t.val,
+    rollingAverage,
+    rollingSum
+  }
+
+//---- graph traversal
+
+FOR vertex[, edge[, path]]
+  IN [min[..max]]
+  OUTBOUND|INBOUND|ANY startVertex
+  GRAPH graphName
+  [PRUNE [pruneVariable = ]pruneCondition]
+  [OPTIONS options]
+
+[WITH vertexCollection1[, vertexCollection2[, vertexCollectionN]]]
+FOR vertex[, edge[, path]]
+  IN [min[..max]]
+  OUTBOUND|INBOUND|ANY startVertex
+  edgeCollection1[, edgeCollection2[, edgeCollectionN]]
+  [PRUNE [pruneVariable = ]pruneCondition]
+  [OPTIONS options]
+
+FOR vertex IN OUTBOUND
+  startVertex
+  edges1, ANY edges2, edges3
+
+FOR v, e, p IN 1..5 OUTBOUND 'circles/A' GRAPH 'traversalGraph'
+    FILTER p.edges[0].theTruth == true
+    RETURN { vertices: p.vertices[*]._key, edges: p.edges[*].label }
+
+FOR v, e, p IN 1..5 OUTBOUND 'circles/A' GRAPH 'traversalGraph'
+    FILTER p.vertices[1]._key == "G"
+    RETURN { vertices: p.vertices[*]._key, edges: p.edges[*].label }
+
+
+---------------------
+
+UPSERT <search-expression>
+  INSERT <insert-expression>
+  UPDATE <update-expression>
+  IN <collection> OPTIONS <options>
+
+or
+
+UPSERT <search-expression>
+  INSERT <insert-expression>
+  REPLACE <replace-expression>
+  IN <collection> OPTIONS <options>
+
+
+UPSERT { page: "index.html" }
+  INSERT { page: "index.html", status: "inserted" }
+  UPDATE { status: "updated" }
+  IN pages
+
+
+UPSERT { page: "index.html" }
+  INSERT { page: "index.html", created: DATE_NOW() }
+  UPDATE { updated: DATE_NOW() }
+  IN pages
+
+
+UPSERT { page: "index.html" }
+  INSERT { page: "index.html", hits: 1 }
+  UPDATE { hits: OLD.value + 1 }
+  IN pages
+
+
+INSERT { _key: "index.html", status: "created" }
+  IN pages OPTIONS { overwriteMode: "ignore" }
+/*
+if a document with the specified _key already exists in the collection, the INSERT behavior will be as follows, depending on the selected overwriteMode:
+
+conflict (default): if a document with the specified _key exists, return a “unique constraint violation”
+ignore: if a document with the specified _key exists, do nothing. Especially do not report a “unique constraint violation” error.
+update: if a document with the specified _key exists, (partially) update the document with the attributes specified.
+replace: if a document with the specified _key exists, fully replace the document with the attributes specified.
+*/
+
+INSERT { _key: "index.html", status: "created" }
+  IN pages OPTIONS { overwriteMode: "replace" }
+  RETURN OLD

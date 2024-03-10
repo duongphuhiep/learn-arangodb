@@ -1,0 +1,27 @@
+C: Client
+CO: ClientOrder
+P: Product
+E: Export
+
+
+A ClientOrder(c1, p1) is potentially reconcilable to an Export(p1, c1).
+This query will return all edges which is potentially reconcilable for "Client C/1"
+
+with C, P, E for p1, co1 in 1 outbound "C/1" CO
+    for c2, e2 in 1 outbound p1 E
+        return {co1, e2}
+
+
+
+
+
+LET w = FIRST(FOR doc IN wallet FILTER doc._key=='1' RETURN doc)
+UPDATE w WITH {
+    balance: w.balance + 1
+} IN wallet
+
+
+LET w = DOCUMENT('w/1')
+UPDATE w WITH {
+    balance: w.balance + 1
+} IN wallet
