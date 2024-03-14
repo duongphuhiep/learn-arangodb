@@ -14,15 +14,18 @@ namespace experiment
     /// when it hold the write lock on the wallet collection to update the wallet balance then 
     /// the lock will block everybody from editing the wallet name
     /// </summary>
+    [Collection(nameof(DbSetupFixture))]
     public class TransactionLockTest : IClassFixture<DbResetFixture>
     {
         private readonly Faker _faker = new Faker();
         private readonly AsyncManualResetEvent updateSignal = new AsyncManualResetEvent(false);
         private readonly AsyncManualResetEvent readySignal = new AsyncManualResetEvent(false);
+        private readonly DbSetupFixture _dbSetupFixture;
         private readonly ITestOutputHelper console;
 
-        public TransactionLockTest(ITestOutputHelper testOutputHelper)
+        public TransactionLockTest(DbSetupFixture dbSetupFixture, ITestOutputHelper testOutputHelper)
         {
+            _dbSetupFixture = dbSetupFixture;
             console = testOutputHelper;
         }
 
@@ -79,7 +82,7 @@ namespace experiment
         async Task UpdateWalletName(string walletKey, string newName)
         {
             console.WriteLine("UpdateWalletName...");
-            using (var adb = DbSetup.CreateAdbClient())
+            using (var adb = _dbSetupFixture.CreateAdbClient())
             {
                 var wallet = await adb.Document.GetDocumentAsync<Wallet>(collectionName: "wallet", documentKey: walletKey);
                 wallet.name = newName;
@@ -90,7 +93,7 @@ namespace experiment
         async Task UpdateWalleBalanceInTransaction(string walletKey)
         {
             console.WriteLine("UpdateWalleBalanceInTransaction...");
-            using (var adb = DbSetup.CreateAdbClient())
+            using (var adb = _dbSetupFixture.CreateAdbClient())
             {
 
                 var tx = await adb.Transaction.BeginTransaction(new StreamTransactionBody
@@ -119,7 +122,7 @@ namespace experiment
 
         async Task<Wallet> GetWallet(string walletKey)
         {
-            using (var adb = DbSetup.CreateAdbClient())
+            using (var adb = _dbSetupFixture.CreateAdbClient())
             {
                 return await adb.Document.GetDocumentAsync<Wallet>(collectionName: "wallet", documentKey: walletKey);
             }

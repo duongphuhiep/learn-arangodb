@@ -7,14 +7,17 @@ using Xunit.Abstractions;
 
 namespace experiment;
 
+[Collection(nameof(DbSetupFixture))]
 public class MakeP2PConcurenceTests : IClassFixture<DbResetFixture>
 {
+    private readonly DbSetupFixture _dbSetupFixture;
     private readonly ITestOutputHelper console;
     private readonly AsyncManualResetEvent updateSignal = new AsyncManualResetEvent(false);
     private readonly SemaphoreSlim readySignal = new SemaphoreSlim(0, 3);
 
-    public MakeP2PConcurenceTests(ITestOutputHelper console)
+    public MakeP2PConcurenceTests(DbSetupFixture dbSetupFixture, ITestOutputHelper console)
     {
+        _dbSetupFixture = dbSetupFixture;
         this.console = console;
     }
 
@@ -26,7 +29,7 @@ public class MakeP2PConcurenceTests : IClassFixture<DbResetFixture>
     /// <param name="walletKey"></param>
     /// <returns></returns>
     [Theory]
-    [InlineData("1")]
+    [InlineData("3")]
     public async Task ModifyBalanceRaceCondition(string walletKey)
     {
         var ex = await Assert.ThrowsAsync<ApiErrorException>(() => Task.WhenAll(
@@ -37,7 +40,7 @@ public class MakeP2PConcurenceTests : IClassFixture<DbResetFixture>
         Assert.Equal("conflict, _rev values do not match", ex.ApiError.ErrorMessage);
         Assert.Equal(HttpStatusCode.PreconditionFailed, ex.ApiError.Code);
         Assert.Equal(1200, ex.ApiError.ErrorNum);
-        using (var adb = DbSetup.CreateAdbClient())
+        using (var adb = _dbSetupFixture.CreateAdbClient())
         {
             var wallet = await adb.Document.GetDocumentAsync<Wallet>("wallet", walletKey);
             Assert.Equal(101, wallet.balance);
@@ -53,6 +56,8 @@ public class MakeP2PConcurenceTests : IClassFixture<DbResetFixture>
         //wait for the readySignal (coming from other Task)
         await readySignal.WaitAsync();
 
+        console.WriteLine("send update signal");
+
         //trigger the updatSignal (ask other Tasks perfom the Update)
         updateSignal.Set();
     }
@@ -67,7 +72,7 @@ public class MakeP2PConcurenceTests : IClassFixture<DbResetFixture>
     async Task ModifyBalanceAfterSignal(string taskName, string walletKey)
     {
         //Act
-        using (var adb = DbSetup.CreateAdbClient())
+        using (var adb = _dbSetupFixture.CreateAdbClient())
         {
             var wallet = await adb.Document.GetDocumentAsync<Wallet>("wallet", walletKey);
             wallet.balance += 1;
@@ -89,14 +94,14 @@ public class MakeP2PConcurenceTests : IClassFixture<DbResetFixture>
     public async Task ModifyBalanceSimple(string walletKey)
     {
         //Act
-        using (var adb = DbSetup.CreateAdbClient())
+        using (var adb = _dbSetupFixture.CreateAdbClient())
         {
             var wallet = await adb.Document.GetDocumentAsync<Wallet>("wallet", walletKey);
             wallet.balance += 1;
             await adb.Document.PatchDocumentAsync("wallet/" + walletKey, wallet);
         }
         //Assert
-        using (var adb = DbSetup.CreateAdbClient())
+        using (var adb = _dbSetupFixture.CreateAdbClient())
         {
             var wallet = await adb.Document.GetDocumentAsync<Wallet>("wallet", walletKey);
             Assert.Equal(101, wallet.balance);

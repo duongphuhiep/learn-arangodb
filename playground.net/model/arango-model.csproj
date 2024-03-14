@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="ArangoDBNetStandard" Version="3.0.0" />
+    <PackageReference Include="Testcontainers.ArangoDb" Version="3.8.0-beta.8238206979" />
   </ItemGroup>
 
 </Project>

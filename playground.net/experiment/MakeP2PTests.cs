@@ -4,8 +4,15 @@ using ArangoDBNetStandard.TransactionApi.Models;
 
 namespace experiment;
 
+[Collection(nameof(DbSetupFixture))]
 public class MakeP2PTests : IClassFixture<DbResetFixture>
 {
+    private readonly DbSetupFixture _dbSetupFixture;
+
+    public MakeP2PTests(DbSetupFixture dbSetupFixture)
+    {
+        _dbSetupFixture = dbSetupFixture;
+    }
     [Fact]
     public async Task CreateP2P_Sucess()
     {
@@ -14,7 +21,7 @@ public class MakeP2PTests : IClassFixture<DbResetFixture>
         var walletReceiverKey = "2";
 
         //Act: Make P2P in a transaction then commit it
-        using (var adb = DbSetup.CreateAdbClient())
+        using (var adb = _dbSetupFixture.CreateAdbClient())
         {
 
             var tx = await adb.Transaction.BeginTransaction(new StreamTransactionBody
@@ -34,7 +41,7 @@ public class MakeP2PTests : IClassFixture<DbResetFixture>
 
         //Assert
 
-        using (var adb = DbSetup.CreateAdbClient())
+        using (var adb = _dbSetupFixture.CreateAdbClient())
         {
             var walletSender = await adb.Document.GetDocumentAsync<Wallet>("wallet", walletSenderKey);
             var walletReceiver = await adb.Document.GetDocumentAsync<Wallet>("wallet", walletReceiverKey);
@@ -57,7 +64,7 @@ public class MakeP2PTests : IClassFixture<DbResetFixture>
         var walletReceiverKey = "2";
 
         //Act: Make P2P in a transaction but abort it
-        using (var adb = DbSetup.CreateAdbClient())
+        using (var adb = _dbSetupFixture.CreateAdbClient())
         {
             var tx = await adb.Transaction.BeginTransaction(new StreamTransactionBody
             {
@@ -75,7 +82,7 @@ public class MakeP2PTests : IClassFixture<DbResetFixture>
         }
 
         //Assert
-        using (var adb = DbSetup.CreateAdbClient())
+        using (var adb = _dbSetupFixture.CreateAdbClient())
         {
             var walletSender = await adb.Document.GetDocumentAsync<Wallet>("wallet", walletSenderKey);
             var walletReceiver = await adb.Document.GetDocumentAsync<Wallet>("wallet", walletReceiverKey);
