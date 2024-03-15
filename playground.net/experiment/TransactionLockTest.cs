@@ -29,7 +29,6 @@ namespace experiment
             console = testOutputHelper;
         }
 
-
         /// <summary>
         /// Concurence test
         /// </summary>
@@ -37,13 +36,23 @@ namespace experiment
         [Fact]
         public async Task UpdateWhileWriteLockTest()
         {
-            await Task.WhenAny(UpdateWalleBalanceInTransaction("1"), readySignal.WaitOneAsync());
+            await Task.WhenAny(UpdateWalleBalanceInTransaction("1", "2"), readySignal.WaitOneAsync());
 
-            //expect to failed because the transaction 
-            var ex = await Assert.ThrowsAsync<ApiErrorException>(async () => await UpdateWalletName("1", _faker.Name.FullName()));
-            Assert.Equal(HttpStatusCode.Conflict, ex.ApiError.Code);
-            Assert.Equal(1200, ex.ApiError.ErrorNum);
-            Assert.Equal("timeout waiting to lock key Operation timed out: Timeout waiting to lock key - in index primary of type primary over '_key'; conflicting key: 1", ex.ApiError.ErrorMessage);
+            // expect success, the wallet "3" is not locked by the transaction
+            await UpdateWalletName("3", _faker.Name.FullName());
+
+            //expect to failed because the transaction lock
+
+            var ex1 = await Assert.ThrowsAsync<ApiErrorException>(async () => await UpdateWalletName("1", _faker.Name.FullName()));
+            Assert.Equal(HttpStatusCode.Conflict, ex1.ApiError.Code);
+            Assert.Equal(1200, ex1.ApiError.ErrorNum);
+            Assert.StartsWith("timeout waiting to lock key Operation timed out: Timeout waiting to lock key - in index primary of type primary over '_key'; conflicting key:", ex1.ApiError.ErrorMessage);
+
+
+            var ex2 = await Assert.ThrowsAsync<ApiErrorException>(async () => await UpdateWalletName("2", _faker.Name.FullName()));
+            Assert.Equal(HttpStatusCode.Conflict, ex2.ApiError.Code);
+            Assert.Equal(1200, ex2.ApiError.ErrorNum);
+            Assert.StartsWith("timeout waiting to lock key Operation timed out: Timeout waiting to lock key - in index primary of type primary over '_key'; conflicting key:", ex2.ApiError.ErrorMessage);
         }
 
         /// <summary>
@@ -69,14 +78,17 @@ namespace experiment
         /// <param name="walletKey"></param>
         /// <returns></returns>
         [Theory]
-        [InlineData("1")]
-        public async Task UpdateWalleBalanceInTransactionTest(string walletKey)
+        [InlineData("1", "2")]
+        public async Task UpdateWalleBalanceInTransactionTest(string walletKey1, string walletKey2)
         {
             updateSignal.Set();
-            await UpdateWalleBalanceInTransaction(walletKey);
+            await UpdateWalleBalanceInTransaction(walletKey1, walletKey2);
 
-            var wallet = await GetWallet(walletKey);
-            Assert.Equal(101, wallet.balance);
+            var wallet1 = await GetWallet(walletKey1);
+            Assert.Equal(101, wallet1.balance);
+
+            var wallet2 = await GetWallet(walletKey2);
+            Assert.Equal(101, wallet2.balance);
         }
 
         async Task UpdateWalletName(string walletKey, string newName)
@@ -90,7 +102,7 @@ namespace experiment
             }
         }
 
-        async Task UpdateWalleBalanceInTransaction(string walletKey)
+        async Task UpdateWalleBalanceInTransaction(string walletKey1, string walletKey2)
         {
             console.WriteLine("UpdateWalleBalanceInTransaction...");
             using (var adb = _dbSetupFixture.CreateAdbClient())
@@ -104,19 +116,28 @@ namespace experiment
                     }
                 });
 
-
                 var dbTransactionId = tx.Result.Id;
 
-                var wallet = await adb.Document.GetDocumentAsync<Wallet>(collectionName: "wallet", documentKey: walletKey, headers: new DocumentHeaderProperties { TransactionId = dbTransactionId });
-                wallet.balance += 1;
-                await adb.Document.PatchDocumentAsync<Wallet, Wallet>(collectionName: "wallet", documentKey: walletKey, body: wallet, headers: new DocumentHeaderProperties { TransactionId = dbTransactionId });
+                console.WriteLine($"Patch wallet {walletKey1}");
 
-                //the wallet is locked here
+                var wallet1 = await adb.Document.GetDocumentAsync<Wallet>(collectionName: "wallet", documentKey: walletKey1, headers: new DocumentHeaderProperties { TransactionId = dbTransactionId });
+                wallet1.balance += 1;
+                await adb.Document.PatchDocumentAsync<Wallet, Wallet>(collectionName: "wallet", documentKey: walletKey1, body: wallet1, headers: new DocumentHeaderProperties { TransactionId = dbTransactionId });
+
+                console.WriteLine($"Patch wallet {walletKey2}");
+
+                var wallet2 = await adb.Document.GetDocumentAsync<Wallet>(collectionName: "wallet", documentKey: walletKey2, headers: new DocumentHeaderProperties { TransactionId = dbTransactionId });
+                wallet2.balance += 1;
+                await adb.Document.PatchDocumentAsync<Wallet, Wallet>(collectionName: "wallet", documentKey: walletKey2, body: wallet2, headers: new DocumentHeaderProperties { TransactionId = dbTransactionId });
+
+
+                //the wallet1 and wallet2 is locked here
                 readySignal.Set();
                 console.WriteLine("Pause UpdateWalleBalanceInTransaction");
                 await updateSignal.WaitOneAsync();
 
                 await adb.Transaction.CommitTransaction(dbTransactionId);
+                console.WriteLine("Commit transaction");
             }
         }
 
